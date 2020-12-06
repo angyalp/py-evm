@@ -27,6 +27,9 @@ from eth.abc import (
     TransactionContextAPI,
     TransactionExecutorAPI,
     MetaWitnessAPI,
+    VMStateResolverAPI,
+    AccountDBResolverAPI,
+    AccountStorageDBResolverAPI
 )
 from eth.constants import (
     MAX_PREV_HEADER_DEPTH,
@@ -37,7 +40,7 @@ from eth._utils.datatypes import (
 )
 
 
-class BaseState(Configurable, StateAPI):
+class BaseState(Configurable, StateAPI, AccountDBResolverAPI, AccountStorageDBResolverAPI):
     #
     # Set from __init__
     #
@@ -55,7 +58,7 @@ class BaseState(Configurable, StateAPI):
             state_root: Hash32) -> None:
         self._db = db
         self.execution_context = execution_context
-        self._account_db = self.get_account_db_class()(db, state_root)
+        self._account_db = self.get_account_db_class()(db, state_root, self, self)
 
     #
     # Logging
@@ -64,6 +67,25 @@ class BaseState(Configurable, StateAPI):
     def logger(self) -> ExtendedDebugLogger:
         return get_extended_debug_logger(f'eth.vm.state.{self.__class__.__name__}')
 
+    #
+    # Account DB resolver methods
+    #
+    def load_account(self, address: Address) -> Tuple[int, int, bytes]:
+        # TODO move the resolver to a slot to speed-up access
+        if self.resolver:
+            return self.resolver.load_account(self, address)
+
+        return None
+
+    #
+    # Account Storage DB resolver methods
+    #
+    def load_slot(self, address: Address, slot: int) -> int:
+        # TODO move the resolver to a slot to speed-up access
+        if self.resolver:
+            return self.resolver.load_slot(self, address, slot)
+
+        return 0
     #
     # Block Object Properties (in opcodes)
     #
@@ -87,6 +109,10 @@ class BaseState(Configurable, StateAPI):
     @property
     def gas_limit(self) -> int:
         return self.execution_context.gas_limit
+
+    @property
+    def resolver(self) -> VMStateResolverAPI:
+        return self.execution_context.resolver
 
     #
     # Access to account db
@@ -186,6 +212,9 @@ class BaseState(Configurable, StateAPI):
     # Access self.prev_hashes (Read-only)
     #
     def get_ancestor_hash(self, block_number: int) -> Hash32:
+        # TODO resolver should resolve this, used by BLOCKHASH opcode
+        raise AttributeError('TODO Implement resolve for BLOCKHASH')
+
         ancestor_depth = self.block_number - block_number - 1
         is_ancestor_depth_out_of_range = (
             ancestor_depth >= MAX_PREV_HEADER_DEPTH

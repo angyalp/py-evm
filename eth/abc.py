@@ -972,6 +972,28 @@ class MessageAPI(ABC):
         ...
 
 
+class AccountDBResolverAPI:
+    @abstractmethod
+    def load_account(self, address: Address) -> Tuple[int, int, bytes]:
+        ...
+
+
+class AccountStorageDBResolverAPI:
+    @abstractmethod
+    def load_slot(self, address: Address, slot: int) -> int:
+        ...
+
+
+class VMStateResolverAPI:
+    @abstractmethod
+    def load_account(self, state: 'StateAPI', address: Address) -> Tuple[int, int, bytes]:
+        ...
+
+    @abstractmethod
+    def load_slot(self, state: 'StateAPI', address: Address, slot: int) -> int:
+        ...
+
+
 class OpcodeAPI(ABC):
     """
     A class representing an opcode.
@@ -1016,7 +1038,7 @@ class ChainContextAPI(ABC):
     Immutable chain context information that remains constant over the VM execution.
     """
     @abstractmethod
-    def __init__(self, chain_id: Optional[int]) -> None:
+    def __init__(self, chain_id: Optional[int], resolver: VMStateResolverAPI = None) -> None:
         """
         Initialize the chain context with the given ``chain_id``.
         """
@@ -1028,6 +1050,11 @@ class ChainContextAPI(ABC):
         """
         Return the chain id of the chain context.
         """
+        ...
+
+    @property
+    @abstractmethod
+    def resolver(self) -> VMStateResolverAPI:
         ...
 
 
@@ -1381,6 +1408,11 @@ class ExecutionContextAPI(ABC):
         """
         Return the id of the chain.
         """
+        ...
+
+    @property
+    @abstractmethod
+    def resolver(self) -> VMStateResolverAPI:
         ...
 
 
@@ -1869,7 +1901,10 @@ class AccountDatabaseAPI(ABC):
     A class representing a database for accounts.
     """
     @abstractmethod
-    def __init__(self, db: AtomicDatabaseAPI, state_root: Hash32 = BLANK_ROOT_HASH) -> None:
+    def __init__(self,
+                 db: AtomicDatabaseAPI,
+                 state_root: Hash32 = BLANK_ROOT_HASH,
+                 resolver: AccountDBResolverAPI = None) -> None:
         """
         Initialize the account database.
         """
@@ -2258,6 +2293,11 @@ class StateAPI(ConfigurableAPI):
         """
         ...
 
+    @property
+    @abstractmethod
+    def resolver(cls) -> VMStateResolverAPI:
+        ...
+
     #
     # Access to account db
     #
@@ -2622,7 +2662,8 @@ class VirtualMachineAPI(ConfigurableAPI):
                  header: BlockHeaderAPI,
                  chaindb: ChainDatabaseAPI,
                  chain_context: ChainContextAPI,
-                 consensus_context: ConsensusContextAPI) -> None:
+                 consensus_context: ConsensusContextAPI,
+                 resolver: VMStateResolverAPI) -> None:
         """
         Initialize the virtual machine.
         """
@@ -2643,6 +2684,7 @@ class VirtualMachineAPI(ConfigurableAPI):
                     header: BlockHeaderAPI,
                     chain_context: ChainContextAPI,
                     previous_hashes: Iterable[Hash32] = (),
+                    resolver: VMStateResolverAPI = None
                     ) -> StateAPI:
         """
         You probably want `VM().state` instead of this.
@@ -2706,7 +2748,8 @@ class VirtualMachineAPI(ConfigurableAPI):
     @abstractmethod
     def create_execution_context(header: BlockHeaderAPI,
                                  prev_hashes: Iterable[Hash32],
-                                 chain_context: ChainContextAPI) -> ExecutionContextAPI:
+                                 chain_context: ChainContextAPI,
+                                 resolver: VMStateResolverAPI = None) -> ExecutionContextAPI:
         """
         Create and return the :class:`~eth.abc.ExecutionContextAPI`` for the given ``header``,
         iterable of block hashes that precede the block and the ``chain_context``.
@@ -3248,7 +3291,8 @@ class ChainAPI(ConfigurableAPI):
         ...
 
     @abstractmethod
-    def get_vm(self, header: BlockHeaderAPI = None) -> VirtualMachineAPI:
+    def get_vm(self, header: BlockHeaderAPI = None, resolver: VMStateResolverAPI = None)\
+            -> VirtualMachineAPI:
         """
         Return the VM instance for the given ``header``.
         """

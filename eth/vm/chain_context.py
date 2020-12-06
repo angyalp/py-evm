@@ -1,15 +1,15 @@
 from typing import Optional
 
-from eth.abc import ChainContextAPI
+from eth.abc import ChainContextAPI, VMStateResolverAPI
 from eth.validation import (
     validate_uint256,
 )
 
 
 class ChainContext(ChainContextAPI):
-    __slots__ = ['_chain_id']
+    __slots__ = ['_chain_id', '_resolver']
 
-    def __init__(self, chain_id: Optional[int]) -> None:
+    def __init__(self, chain_id: Optional[int], resolver: VMStateResolverAPI = None) -> None:
 
         if chain_id is None:
             chain_id = 0  # Default value (invalid for public networks)
@@ -17,7 +17,12 @@ class ChainContext(ChainContextAPI):
         # the number that needs to be RLP encoded is `CHAINID * 2 + 36`
         validate_uint256(chain_id)
         self._chain_id = chain_id
+        self._resolver = resolver
 
     @property
     def chain_id(self) -> int:
         return self._chain_id
+
+    @property
+    def resolver(self) -> VMStateResolverAPI:
+        return self._resolver

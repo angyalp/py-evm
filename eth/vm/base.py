@@ -41,6 +41,7 @@ from eth.abc import (
     StateAPI,
     UnsignedTransactionAPI,
     VirtualMachineAPI,
+    VMStateResolverAPI
 )
 from eth.consensus.pow import (
     PowConsensus,
@@ -92,6 +93,7 @@ class VM(Configurable, VirtualMachineAPI):
     fork: str = None  # noqa: E701  # flake8 bug that's fixed in 3.6.0+
     chaindb: ChainDatabaseAPI = None
     _state_class: Type[StateAPI] = None
+    resolver: VMStateResolverAPI = None
 
     _state = None
     _block = None
@@ -102,11 +104,13 @@ class VM(Configurable, VirtualMachineAPI):
                  header: BlockHeaderAPI,
                  chaindb: ChainDatabaseAPI,
                  chain_context: ChainContextAPI,
-                 consensus_context: ConsensusContextAPI) -> None:
+                 consensus_context: ConsensusContextAPI,
+                 resolver: VMStateResolverAPI) -> None:
         self.chaindb = chaindb
         self.chain_context = chain_context
         self.consensus_context = consensus_context
         self._initial_header = header
+        self.resolver = resolver
 
     def get_header(self) -> BlockHeaderAPI:
         if self._block is None:
@@ -126,7 +130,8 @@ class VM(Configurable, VirtualMachineAPI):
             self._state = self.build_state(self.chaindb.db,
                                            self.get_header(),
                                            self.chain_context,
-                                           self.previous_hashes)
+                                           self.previous_hashes,
+                                           self.resolver)
         return self._state
 
     @classmethod
@@ -135,8 +140,9 @@ class VM(Configurable, VirtualMachineAPI):
                     header: BlockHeaderAPI,
                     chain_context: ChainContextAPI,
                     previous_hashes: Iterable[Hash32] = (),
+                    resolver: VMStateResolverAPI = None
                     ) -> StateAPI:
-        execution_context = cls.create_execution_context(header, previous_hashes, chain_context)
+        execution_context = cls.create_execution_context(header, previous_hashes, chain_context, resolver)
         return cls.get_state_class()(db, execution_context, header.state_root)
 
     @cached_property
@@ -172,7 +178,8 @@ class VM(Configurable, VirtualMachineAPI):
     def create_execution_context(cls,
                                  header: BlockHeaderAPI,
                                  prev_hashes: Iterable[Hash32],
-                                 chain_context: ChainContextAPI) -> ExecutionContextAPI:
+                                 chain_context: ChainContextAPI,
+                                 resolver: VMStateResolverAPI = None) -> ExecutionContextAPI:
         fee_recipient = cls.consensus_class.get_fee_recipient(header)
         return ExecutionContext(
             coinbase=fee_recipient,
@@ -182,6 +189,7 @@ class VM(Configurable, VirtualMachineAPI):
             gas_limit=header.gas_limit,
             prev_hashes=prev_hashes,
             chain_id=chain_context.chain_id,
+            resolver=resolver
         )
 
     def execute_bytecode(self,

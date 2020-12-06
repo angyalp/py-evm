@@ -33,6 +33,8 @@ from eth.abc import (
     AtomicDatabaseAPI,
     DatabaseAPI,
     MetaWitnessAPI,
+    AccountDBResolverAPI,
+    AccountStorageDBResolverAPI
 )
 from eth.constants import (
     BLANK_ROOT_HASH,
@@ -83,7 +85,11 @@ from .hash_trie import HashTrie
 class AccountDB(AccountDatabaseAPI):
     logger = get_extended_debug_logger('eth.db.account.AccountDB')
 
-    def __init__(self, db: AtomicDatabaseAPI, state_root: Hash32=BLANK_ROOT_HASH) -> None:
+    def __init__(self,
+                 db: AtomicDatabaseAPI,
+                 state_root: Hash32=BLANK_ROOT_HASH,
+                 account_resolver: AccountDBResolverAPI = None,
+                 storage_resolver: AccountStorageDBResolverAPI = None) -> None:
         r"""
         Internal implementation details (subject to rapid change):
         Database entries go through several pipes, like so...
@@ -135,6 +141,8 @@ class AccountDB(AccountDatabaseAPI):
         self._root_hash_at_last_persist = state_root
         self._accessed_accounts: Set[Address] = set()
         self._accessed_bytecodes: Set[Address] = set()
+        self._account_resolver = account_resolver
+        self._storage_resolver = storage_resolver
 
     @property
     def state_root(self) -> Hash32:
@@ -187,7 +195,7 @@ class AccountDB(AccountDatabaseAPI):
             store = self._account_stores[address]
         else:
             storage_root = self._get_storage_root(address)
-            store = AccountStorageDB(self._raw_store_db, storage_root, address)
+            store = AccountStorageDB(self._raw_store_db, storage_root, address, self._storage_resolver)
             self._account_stores[address] = store
         return store
 
@@ -338,12 +346,37 @@ class AccountDB(AccountDatabaseAPI):
         lookup_trie = self._journaltrie if from_journal else self._trie_cache
 
         try:
-            return lookup_trie[address]
+            account = lookup_trie[address]
         except trie_exceptions.MissingTrieNode as exc:
             raise MissingAccountTrieNode(*exc.args) from exc
         except KeyError:
             # In case the account is deleted in the JournalDB
-            return b''
+            account = b''
+
+        if self._account_resolver:
+            # TODO call resolver only if account is not loaded so it could function as e.g. on_missing_account ?
+            # TODO commit the changes, to avoid rolling it back, because this update doesn't belong to the actual TX,
+            #  but it is more like a genesis state.
+            data = self._account_resolver.load_account(address)
+            if data is not None:
+                balance, nonce, code = data
+
+                validate_uint256(balance, title="Account Balance")
+                validate_uint256(nonce, title="Nonce")
+                validate_is_bytes(code, title="Code")
+
+                if account:
+                    account_obj = rlp.decode(account, sedes=Account)
+                else:
+                    account_obj = Account()
+
+                code_hash = keccak(code)
+                self._journaldb[code_hash] = code
+                self._set_account(address, account_obj.copy(balance=balance, nonce=nonce, code_hash=code_hash))
+
+                return self._journaltrie[address]
+
+        return account
 
     def _get_account(self, address: Address, from_journal: bool=True) -> Account:
         if from_journal and address in self._account_cache:

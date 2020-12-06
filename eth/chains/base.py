@@ -53,6 +53,7 @@ from eth.abc import (
     StateAPI,
     SignedTransactionAPI,
     UnsignedTransactionAPI,
+    VMStateResolverAPI
 )
 from eth.consensus import (
     ConsensusContext,
@@ -85,7 +86,7 @@ from eth.rlp.headers import (
 from eth.typing import (
     AccountState,
     HeaderParams,
-    StaticMethod,
+    StaticMethod
 )
 
 from eth.validation import (
@@ -262,16 +263,18 @@ class Chain(BaseChain):
     #
     # VM API
     #
-    def get_vm(self, at_header: BlockHeaderAPI = None) -> VirtualMachineAPI:
+    def get_vm(self, at_header: BlockHeaderAPI = None, resolver: VMStateResolverAPI = None)\
+            -> VirtualMachineAPI:
         header = self.ensure_header(at_header)
         vm_class = self.get_vm_class_for_block_number(header.block_number)
-        chain_context = ChainContext(self.chain_id)
+        chain_context = ChainContext(self.chain_id, resolver)
 
         return vm_class(
             header=header,
             chaindb=self.chaindb,
             chain_context=chain_context,
-            consensus_context=self.consensus_context
+            consensus_context=self.consensus_context,
+            resolver=resolver
         )
 
     #
@@ -680,8 +683,9 @@ class MiningChain(Chain, MiningChainAPI):
         self.header = self.create_header_from_parent(mined_block.header)
         return mine_result
 
-    def get_vm(self, at_header: BlockHeaderAPI = None) -> VirtualMachineAPI:
+    def get_vm(self, at_header: BlockHeaderAPI = None, resolver: VMStateResolverAPI = None)\
+            -> VirtualMachineAPI:
         if at_header is None:
             at_header = self.header
 
-        return super().get_vm(at_header)
+        return super().get_vm(at_header, resolver)

@@ -8,7 +8,7 @@ from eth_typing import (
     Hash32,
 )
 
-from eth.abc import ExecutionContextAPI
+from eth.abc import ExecutionContextAPI, VMStateResolverAPI
 from eth._utils.generator import CachedIterable
 
 
@@ -21,6 +21,7 @@ class ExecutionContext(ExecutionContextAPI):
     _gas_limit = None
     _prev_hashes = None
     _chain_id = None
+    _resolver = None
 
     def __init__(
             self,
@@ -30,7 +31,8 @@ class ExecutionContext(ExecutionContextAPI):
             difficulty: int,
             gas_limit: int,
             prev_hashes: Iterable[Hash32],
-            chain_id: int) -> None:
+            chain_id: int,
+            resolver: VMStateResolverAPI = None) -> None:
         self._coinbase = coinbase
         self._timestamp = timestamp
         self._block_number = block_number
@@ -38,6 +40,7 @@ class ExecutionContext(ExecutionContextAPI):
         self._gas_limit = gas_limit
         self._prev_hashes = CachedIterable(prev_hashes)
         self._chain_id = chain_id
+        self._resolver = resolver
 
     @property
     def coinbase(self) -> Address:
@@ -66,3 +69,7 @@ class ExecutionContext(ExecutionContextAPI):
     @property
     def chain_id(self) -> int:
         return self._chain_id
+
+    @property
+    def resolver(self) -> VMStateResolverAPI:
+        return self._resolver

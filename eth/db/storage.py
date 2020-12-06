@@ -31,6 +31,7 @@ from eth.abc import (
     AccountStorageDatabaseAPI,
     AtomicDatabaseAPI,
     DatabaseAPI,
+    AccountStorageDBResolverAPI
 )
 from eth.constants import (
     BLANK_ROOT_HASH,
@@ -251,7 +252,11 @@ CLEAR_COUNT_KEY_NAME = b'clear-count'
 class AccountStorageDB(AccountStorageDatabaseAPI):
     logger = get_extended_debug_logger("eth.db.storage.AccountStorageDB")
 
-    def __init__(self, db: AtomicDatabaseAPI, storage_root: Hash32, address: Address) -> None:
+    def __init__(self,
+                 db: AtomicDatabaseAPI,
+                 storage_root: Hash32,
+                 address: Address,
+                 resolver: AccountStorageDBResolverAPI = None) -> None:
         """
         Database entries go through several pipes, like so...
 
@@ -290,6 +295,7 @@ class AccountStorageDB(AccountStorageDatabaseAPI):
         self._locked_changes = JournalDB(self._storage_cache)
         self._journal_storage = JournalDB(self._locked_changes)
         self._accessed_slots: Set[int] = set()
+        self._resolver = resolver
 
         # Track how many times we have cleared the storage. This is journaled
         # in lockstep with other storage changes. That way, we can detect if a revert
@@ -298,6 +304,11 @@ class AccountStorageDB(AccountStorageDatabaseAPI):
         self._clear_count = JournalDB(MemoryDB({CLEAR_COUNT_KEY_NAME: to_bytes(0)}))
 
     def get(self, slot: int, from_journal: bool=True) -> int:
+        if self._resolver:
+            # Note: Get, set, ... operations are handled the same.
+            val = self._resolver.load_slot(self._address, slot)
+            self._init_slot(slot, val)
+
         self._accessed_slots.add(slot)
         key = int_to_big_endian(slot)
         lookup_db = self._journal_storage if from_journal else self._locked_changes
@@ -313,7 +324,22 @@ class AccountStorageDB(AccountStorageDatabaseAPI):
         else:
             return rlp.decode(encoded_value, sedes=rlp.sedes.big_endian_int)
 
+    def _init_slot(self, slot: int, value: int) -> None:
+        # TODO We should commit this change immediately skipping all checkpoints, because
+        #  basically we want to simulate a state in the previous block and we must avoid the rollback of this
+        #  state change. Or if we cannot skip checkpoints, then we must make sure, that the slot is filled
+        #  again when accessed again (currently loading will be skipped, because we keep track of loaded slots
+        #  and this is not reset in case of rollback).
+        key = int_to_big_endian(slot)
+        if value:
+            self._journal_storage[key] = rlp.encode(value)
+
     def set(self, slot: int, value: int) -> None:
+        if self._resolver:
+            # Note: Get, set, ... operations are handled the same.
+            val = self._resolver.load_slot(self._address, slot)
+            self._init_slot(slot, val)
+
         key = int_to_big_endian(slot)
         if value:
             self._journal_storage[key] = rlp.encode(value)
