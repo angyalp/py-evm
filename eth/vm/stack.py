@@ -163,6 +163,36 @@ class Stack(StackAPI):
 
             return tuple(type_cast_popped)  # type: ignore
 
+    def peek_ints(self, num_items: int) -> Tuple[int, ...]:
+        #
+        # Note: This function is optimized for speed over readability.
+        #
+        if num_items > len(self.values):
+            raise InsufficientStack(
+                "Wanted %d stack items, only had %d",
+                num_items,
+                len(self.values),
+            )
+        else:
+            neg_num_items = -1 * num_items
+
+            # Quickest way to pop off multiple values from the end, in place
+            all_popped = reversed(self.values[neg_num_items:])
+
+            type_cast_popped = []
+
+            # Convert any non-matching types to the requested type (int)
+            # This doesn't use the @to_tuple(generator) pattern, for added performance
+            for item_type, popped in all_popped:
+                if item_type is int:
+                    type_cast_popped.append(popped)
+                elif item_type is bytes:
+                    type_cast_popped.append(big_endian_to_int(popped))  # type: ignore
+                else:
+                    raise _busted_type(item_type, popped)
+
+            return tuple(type_cast_popped)  # type: ignore
+
     def pop_bytes(self, num_items: int) -> Tuple[bytes, ...]:
         #
         # Note: This function is optimized for speed over readability.

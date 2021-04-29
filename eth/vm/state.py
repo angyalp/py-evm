@@ -27,6 +27,7 @@ from eth.abc import (
     TransactionContextAPI,
     TransactionExecutorAPI,
     MetaWitnessAPI,
+    VmTracerAPI
 )
 from eth.constants import (
     MAX_PREV_HEADER_DEPTH,

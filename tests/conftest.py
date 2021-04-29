@@ -116,6 +116,53 @@ def funded_address_initial_balance():
     return to_wei(1000, 'ether')
 
 
+@pytest.fixture
+def address1_private_key():
+    return keys.PrivateKey(
+        decode_hex('0x45a915e4d060149eb4365960e6a7a45f334393093061116b197e3240065ff2d9')
+    )
+
+
+@pytest.fixture
+def address1(address1_private_key):
+    return address1_private_key.public_key.to_canonical_address()
+
+
+@pytest.fixture
+def address2_private_key():
+    return keys.PrivateKey(
+        decode_hex('0x45a915e4d060149eb4365960e6a7a45f334393093061116b197e3240065ff2d0')
+    )
+
+
+@pytest.fixture
+def address2(address2_private_key):
+    return address2_private_key.public_key.to_canonical_address()
+
+
+@pytest.fixture
+def address3_private_key():
+    return keys.PrivateKey(
+        decode_hex('0x45a915e4d060149eb4365960e6a7a45f334393093061116b197e3240065ff2d1')
+    )
+
+
+@pytest.fixture
+def address3(address3_private_key):
+    return address3_private_key.public_key.to_canonical_address()
+
+
+@pytest.fixture
+def account_fixtures(funded_address_private_key, funded_address,
+                     address1_private_key, address1,
+                     address2_private_key, address2,
+                     address3_private_key, address3):
+    return funded_address_private_key, funded_address,\
+                     address1_private_key, address1, \
+                     address2_private_key, address2, \
+                     address3_private_key, address3
+
+
 def _chain_with_block_validation(VM, base_db, genesis_state, chain_cls=Chain):
     """
     Return a Chain object containing just the genesis block.
@@ -285,3 +332,8 @@ def ropsten_epoch_headers():
     rlp_path = Path(__file__).parent / 'rlp-fixtures' / 'ropston_epoch_headers.rlp'
     encoded_headers = load_bytes_from_file(rlp_path)
     return deserialize_rlp_objects(encoded_headers, BlockHeader)
+
+
+@pytest.fixture(params=[True, False])
+def fork_at_head(request):
+    return request.param

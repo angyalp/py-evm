@@ -53,6 +53,7 @@ from eth.abc import (
     StateAPI,
     SignedTransactionAPI,
     UnsignedTransactionAPI,
+    VmTracerAPI,
 )
 from eth.consensus import (
     ConsensusContext,
@@ -262,7 +263,7 @@ class Chain(BaseChain):
     #
     # VM API
     #
-    def get_vm(self, at_header: BlockHeaderAPI = None) -> VirtualMachineAPI:
+    def get_vm(self, at_header: BlockHeaderAPI = None, tracer: VmTracerAPI = None) -> VirtualMachineAPI:
         header = self.ensure_header(at_header)
         vm_class = self.get_vm_class_for_block_number(header.block_number)
         chain_context = ChainContext(self.chain_id)
@@ -271,7 +272,8 @@ class Chain(BaseChain):
             header=header,
             chaindb=self.chaindb,
             chain_context=chain_context,
-            consensus_context=self.consensus_context
+            consensus_context=self.consensus_context,
+            tracer=tracer
         )
 
     #
@@ -680,8 +682,8 @@ class MiningChain(Chain, MiningChainAPI):
         self.header = self.create_header_from_parent(mined_block.header)
         return mine_result
 
-    def get_vm(self, at_header: BlockHeaderAPI = None) -> VirtualMachineAPI:
+    def get_vm(self, at_header: BlockHeaderAPI = None, tracer: VmTracerAPI = None) -> VirtualMachineAPI:
         if at_header is None:
             at_header = self.header
 
-        return super().get_vm(at_header)
+        return super().get_vm(at_header, tracer)

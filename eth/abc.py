@@ -1031,6 +1031,34 @@ class ChainContextAPI(ABC):
         ...
 
 
+class VmTracerAPI:
+    """
+    type Tracer interface {
+	    CaptureStart(from common.Address, to common.Address, create bool, input []byte, gas uint64, value *big.Int) error
+	    CaptureState(env *EVM, pc uint64, op OpCode, gas, cost uint64, memory *Memory, stack *Stack, rStack *ReturnStack, rData []byte, contract *Contract, depth int, err error) error
+	    CaptureFault(env *EVM, pc uint64, op OpCode, gas, cost uint64, memory *Memory, stack *Stack, rStack *ReturnStack, contract *Contract, depth int, err error) error
+	    CaptureEnd(output []byte, gasUsed uint64, t time.Duration, err error) error
+    }
+    """
+    # TODO Might be interesting:
+    #  - gas consumed
+    #  - memory expanded, changed
+    #  - stack changed
+    #  - account changed
+    #  - Error
+    @abstractmethod
+    def on_start(self):
+        ...
+
+    @abstractmethod
+    def on_end(self):
+        ...
+
+    @abstractmethod
+    def on_step(self, opcode: int, opcode_fn: OpcodeAPI, computation: 'ComputationAPI'):
+        ...
+
+
 class TransactionContextAPI(ABC):
     """
     Immutable transaction context information that remains constant over the VM execution.
@@ -1380,6 +1408,14 @@ class ExecutionContextAPI(ABC):
     def chain_id(self) -> int:
         """
         Return the id of the chain.
+        """
+        ...
+
+    @property
+    @abstractmethod
+    def tracer(self) -> VmTracerAPI:
+        """
+        Return the VM tracer.
         """
         ...
 
@@ -2622,7 +2658,8 @@ class VirtualMachineAPI(ConfigurableAPI):
                  header: BlockHeaderAPI,
                  chaindb: ChainDatabaseAPI,
                  chain_context: ChainContextAPI,
-                 consensus_context: ConsensusContextAPI) -> None:
+                 consensus_context: ConsensusContextAPI,
+                 tracer: VmTracerAPI) -> None:
         """
         Initialize the virtual machine.
         """
@@ -2706,7 +2743,8 @@ class VirtualMachineAPI(ConfigurableAPI):
     @abstractmethod
     def create_execution_context(header: BlockHeaderAPI,
                                  prev_hashes: Iterable[Hash32],
-                                 chain_context: ChainContextAPI) -> ExecutionContextAPI:
+                                 chain_context: ChainContextAPI,
+                                 tracer: VmTracerAPI) -> ExecutionContextAPI:
         """
         Create and return the :class:`~eth.abc.ExecutionContextAPI`` for the given ``header``,
         iterable of block hashes that precede the block and the ``chain_context``.
@@ -3248,7 +3286,7 @@ class ChainAPI(ConfigurableAPI):
         ...
 
     @abstractmethod
-    def get_vm(self, header: BlockHeaderAPI = None) -> VirtualMachineAPI:
+    def get_vm(self, header: BlockHeaderAPI = None, tracer: VmTracerAPI = None) -> VirtualMachineAPI:
         """
         Return the VM instance for the given ``header``.
         """

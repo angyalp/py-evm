@@ -30,6 +30,7 @@ from eth.abc import (
     ComputationAPI,
     StateAPI,
     TransactionContextAPI,
+    VmTracerAPI,
 )
 from eth.constants import (
     GAS_MEMORY,
@@ -126,13 +127,15 @@ class BaseComputation(Configurable, ComputationAPI):
     # VM configuration
     opcodes: Dict[int, OpcodeAPI] = None
     _precompiles: Dict[Address, Callable[[ComputationAPI], ComputationAPI]] = None
+    tracer: VmTracerAPI = None
 
     logger = get_extended_debug_logger('eth.vm.computation.Computation')
 
     def __init__(self,
                  state: StateAPI,
                  message: MessageAPI,
-                 transaction_context: TransactionContextAPI) -> None:
+                 transaction_context: TransactionContextAPI,
+                 tracer: VmTracerAPI = None) -> None:
 
         self.state = state
         self.msg = message
@@ -148,6 +151,8 @@ class BaseComputation(Configurable, ComputationAPI):
 
         code = message.code
         self.code = CodeStream(code)
+
+        self.tracer = tracer
 
     #
     # Convenience
@@ -517,6 +522,7 @@ class BaseComputation(Configurable, ComputationAPI):
                           transaction_context: TransactionContextAPI) -> ComputationAPI:
         with cls(state, message, transaction_context) as computation:
             # Early exit on pre-compiles
+            # TODO should the tracer be notified about a precompile call?
             precompile = computation.precompiles.get(message.code_address, NO_RESULT)
             if precompile is not NO_RESULT:
                 precompile(computation)
@@ -538,6 +544,13 @@ class BaseComputation(Configurable, ComputationAPI):
                         opcode_fn.mnemonic,
                         max(0, computation.code.program_counter - 1),
                     )
+
+                tracer = state.execution_context.tracer
+                if tracer is not None:
+                    try:
+                        tracer.on_step(opcode, opcode_fn, computation)
+                    except Exception:
+                        pass
 
                 try:
                     opcode_fn(computation=computation)
